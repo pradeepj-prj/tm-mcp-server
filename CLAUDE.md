@@ -21,10 +21,15 @@ Joule Agent / AI Assistant ↔ MCP Server (SSE) ↔ HTTP ↔ TM Skills API (Fast
 - **Configuration:** `pydantic-settings` (reads `.env` or env vars)
 - **Transport:** SSE (Server-Sent Events) — HTTP-based, suitable for remote deployment
 
+## Git Repo
+
+**Remote:** git@github.com:pradeepj-prj/tm-mcp-server.git
+
 ## Project Structure
 ```
 tm_mcp_server/
 ├── CLAUDE.md              ← You are here
+├── MCP_GUIDE.md           ← Comprehensive guide to MCP for newcomers
 ├── server.py              ← MCP server: tools, resources, prompts (SSE transport)
 ├── config.py              ← Configuration (host, port, API URL, API key)
 ├── pyproject.toml         ← Project metadata and dependencies
