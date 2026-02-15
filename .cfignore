@@ -1,0 +1,10 @@
+__pycache__/
+*.egg-info/
+.venv/
+.env
+.api-key
+.git/
+.claude/
+.idea/
+.vscode/
+CLAUDE.md
