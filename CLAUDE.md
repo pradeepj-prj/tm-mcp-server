@@ -7,7 +7,7 @@ An MCP (Model Context Protocol) server that exposes the Talent Management Skills
 This MCP server wraps the **TM Skills REST API** (a separate FastAPI project at `../tm_app`). It does NOT access the database directly — all data flows through the HTTP API.
 
 ```
-Joule Agent / AI Assistant ↔ MCP Server (SSE) ↔ HTTP ↔ TM Skills API (FastAPI) ↔ PostgreSQL
+Joule Agent / AI Assistant ↔ MCP Server (Streamable HTTP) ↔ HTTP ↔ TM Skills API (FastAPI) ↔ PostgreSQL
 ```
 
 ### Why wrap the API instead of querying the DB directly?
@@ -19,7 +19,7 @@ Joule Agent / AI Assistant ↔ MCP Server (SSE) ↔ HTTP ↔ TM Skills API (Fast
 - **MCP SDK:** `mcp` (Python SDK with FastMCP)
 - **HTTP client:** `httpx` (async)
 - **Configuration:** `pydantic-settings` (reads `.env` or env vars)
-- **Transport:** SSE (Server-Sent Events) — HTTP-based, suitable for remote deployment
+- **Transport:** Streamable HTTP (MCP spec 2025-03-26) — suitable for remote deployment
 
 ## Git Repo
 
@@ -30,7 +30,7 @@ Joule Agent / AI Assistant ↔ MCP Server (SSE) ↔ HTTP ↔ TM Skills API (Fast
 tm_mcp_server/
 ├── CLAUDE.md              ← You are here
 ├── MCP_GUIDE.md           ← Comprehensive guide to MCP for newcomers
-├── server.py              ← MCP server: tools, resources, prompts (SSE transport)
+├── server.py              ← MCP server: tools, resources, prompts (Streamable HTTP)
 ├── config.py              ← Configuration (host, port, API URL, API key)
 ├── pyproject.toml         ← Project metadata and dependencies
 ├── requirements.txt       ← Production deps for CF Python buildpack
@@ -52,10 +52,10 @@ tm_mcp_server/
 cd /Users/I774404/tm_mcp_server
 pip install -e .
 cp .env.example .env       # Configure API URL and key
-python server.py           # Starts SSE server on http://localhost:8080
+python server.py           # Starts server on http://localhost:8080/mcp
 ```
 
-The SSE endpoint will be at `http://localhost:8080/sse`.
+The MCP endpoint will be at `http://localhost:8080/mcp`.
 
 For interactive testing with the MCP Inspector:
 ```bash
@@ -65,7 +65,7 @@ mcp dev server.py
 ## Deployment (Cloud Foundry — SAP BTP)
 
 ### Live URLs
-- **MCP SSE endpoint:** https://tm-skills-mcp.cfapps.ap10.hana.ondemand.com/sse
+- **MCP endpoint:** https://tm-skills-mcp.cfapps.ap10.hana.ondemand.com/mcp
 - **CF org/space:** SEAIO_dial-3-0-zme762l7 / dev
 
 ### Deploy
@@ -87,14 +87,14 @@ cf start tm-skills-mcp
 
 ### Key CF notes
 - `manifest.yml` must NOT contain `TM_API_KEY` — it would overwrite `cf set-env` on every push
-- Health check is `port` type (checks if the SSE server is listening)
+- Health check is `port` type (checks if the server is listening)
 - CF assigns `$PORT` automatically — the server reads it from the environment
 - 256M memory is sufficient for the MCP SDK + httpx stack
 
 ### Connecting from Joule Studio
 Add the MCP server URL as a tool in Joule Studio:
 ```
-https://tm-skills-mcp.cfapps.ap10.hana.ondemand.com/sse
+https://tm-skills-mcp.cfapps.ap10.hana.ondemand.com/mcp
 ```
 
 ## MCP Primitives

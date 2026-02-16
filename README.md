@@ -7,11 +7,11 @@ An [MCP](https://modelcontextprotocol.io/) server that exposes a Talent Manageme
 ```
 AI Assistant (Joule / Claude / etc.)
         │
-        │  MCP protocol over SSE
+        │  MCP protocol (Streamable HTTP)
         ▼
 ┌─────────────────────┐
 │  TM Skills MCP      │  ← This project
-│  Server (SSE)       │
+│  Server             │
 └────────┬────────────┘
          │  HTTP + API key
          ▼
@@ -31,7 +31,7 @@ The MCP server is a thin wrapper — it translates MCP tool calls into HTTP requ
 ```bash
 pip install -e .
 cp .env.example .env       # Set TM_API_BASE_URL and TM_API_KEY
-python server.py           # SSE server on http://localhost:8080/sse
+python server.py           # Streamable HTTP server on http://localhost:8080/mcp
 ```
 
 For interactive testing with the MCP Inspector:
@@ -43,10 +43,10 @@ mcp dev server.py
 
 ## Connecting an AI assistant
 
-Point any MCP client at the SSE endpoint:
+Point any MCP client at the endpoint:
 
 ```
-https://tm-skills-mcp.cfapps.ap10.hana.ondemand.com/sse
+https://tm-skills-mcp.cfapps.ap10.hana.ondemand.com/mcp
 ```
 
 The client will discover 13 tools, 2 resources, and 3 prompt templates automatically via the MCP handshake.
@@ -134,7 +134,7 @@ cf start tm-skills-mcp
 
 | | URL |
 |-|-----|
-| **MCP endpoint** | `https://tm-skills-mcp.cfapps.ap10.hana.ondemand.com/sse` |
+| **MCP endpoint** | `https://tm-skills-mcp.cfapps.ap10.hana.ondemand.com/mcp` |
 | **TM Skills API** | `https://tm-skills-api.cfapps.ap10.hana.ondemand.com` |
 | **CF space** | `SEAIO_dial-3-0-zme762l7 / dev` |
 
@@ -152,5 +152,5 @@ These are validated by the API:
 - **MCP SDK:** [mcp](https://pypi.org/project/mcp/) (Python SDK with FastMCP)
 - **HTTP client:** [httpx](https://www.python-httpx.org/) (async)
 - **Configuration:** [pydantic-settings](https://docs.pydantic.dev/latest/concepts/pydantic_settings/) (`.env` + env vars)
-- **Transport:** SSE (Server-Sent Events)
+- **Transport:** Streamable HTTP (MCP spec 2025-03-26)
 - **Python:** 3.10+

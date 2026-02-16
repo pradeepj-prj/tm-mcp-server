@@ -38,5 +38,5 @@ echo "Starting $APP_NAME..."
 cf start "$APP_NAME"
 
 echo ""
-echo "Deployed. MCP SSE endpoint:"
-echo "  https://$APP_NAME.cfapps.ap10.hana.ondemand.com/sse"
+echo "Deployed. MCP endpoint:"
+echo "  https://$APP_NAME.cfapps.ap10.hana.ondemand.com/mcp"
