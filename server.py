@@ -17,7 +17,7 @@ mcp = FastMCP(
         "You have access to a Talent Management Skills API that stores employee "
         "skill profiles, proficiency scores, evidence, and org hierarchy data. "
         "Use the tools to answer HR and talent questions. Employee IDs look like "
-        "EMP000001. Org IDs look like ORG030. Skill IDs are integers. "
+        "EMP000001. Org IDs look like ORG030. Skill IDs are numeric (e.g. 1 or 1.0). "
         "Start by browsing the skill catalog (browse_skills) if you need to find "
         "skill IDs by name."
     ),
@@ -83,7 +83,7 @@ async def get_employee_skills(employee_id: str) -> str:
 
 
 @mcp.tool()
-async def get_skill_evidence(employee_id: str, skill_id: int) -> str:
+async def get_skill_evidence(employee_id: str, skill_id: float) -> str:
     """Get the evidence behind an employee's skill rating — certifications, projects,
     assessments, peer endorsements, etc.
 
@@ -91,11 +91,11 @@ async def get_skill_evidence(employee_id: str, skill_id: int) -> str:
         employee_id: Employee ID (e.g. EMP000001)
         skill_id: Numeric skill ID (use browse_skills to find IDs by name)
     """
-    return await _api_get(f"/tm/employees/{employee_id}/skills/{skill_id}/evidence")
+    return await _api_get(f"/tm/employees/{employee_id}/skills/{int(skill_id)}/evidence")
 
 
 @mcp.tool()
-async def get_top_skills(employee_id: str, limit: int = 10) -> str:
+async def get_top_skills(employee_id: str, limit: float = 10) -> str:
     """Get an employee's strongest skills ranked by proficiency and confidence —
     a "skill passport" view.
 
@@ -105,7 +105,7 @@ async def get_top_skills(employee_id: str, limit: int = 10) -> str:
     """
     return await _api_get(
         f"/tm/employees/{employee_id}/top-skills",
-        params={"limit": limit},
+        params={"limit": int(limit)},
     )
 
 
@@ -145,9 +145,9 @@ async def browse_skills(
 
 @mcp.tool()
 async def get_top_experts(
-    skill_id: int,
-    min_proficiency: int = 4,
-    limit: int = 20,
+    skill_id: float,
+    min_proficiency: float = 4,
+    limit: float = 20,
 ) -> str:
     """Find the top experts for a specific skill — ranked by proficiency, confidence, and recency.
 
@@ -157,15 +157,15 @@ async def get_top_experts(
         limit: Max results to return 1-100 (default 20)
     """
     return await _api_get(
-        f"/tm/skills/{skill_id}/experts",
-        params={"min_proficiency": min_proficiency, "limit": limit},
+        f"/tm/skills/{int(skill_id)}/experts",
+        params={"min_proficiency": int(min_proficiency), "limit": int(limit)},
     )
 
 
 @mcp.tool()
 async def get_skill_coverage(
-    skill_id: int,
-    min_proficiency: int = 3,
+    skill_id: float,
+    min_proficiency: float = 3,
 ) -> str:
     """Get the proficiency distribution for a skill — how many employees at each level (0-5)
     and total count above a threshold.
@@ -175,17 +175,17 @@ async def get_skill_coverage(
         min_proficiency: Threshold for the coverage count 0-5 (default 3)
     """
     return await _api_get(
-        f"/tm/skills/{skill_id}/coverage",
-        params={"min_proficiency": min_proficiency},
+        f"/tm/skills/{int(skill_id)}/coverage",
+        params={"min_proficiency": int(min_proficiency)},
     )
 
 
 @mcp.tool()
 async def get_evidence_backed_candidates(
-    skill_id: int,
-    min_proficiency: int = 3,
-    min_evidence_strength: int = 4,
-    limit: int = 20,
+    skill_id: float,
+    min_proficiency: float = 3,
+    min_evidence_strength: float = 4,
+    limit: float = 20,
 ) -> str:
     """Find employees with a skill AND strong evidence to back it up — certifications,
     project work, assessments with high signal strength.
@@ -197,19 +197,19 @@ async def get_evidence_backed_candidates(
         limit: Max candidates to return 1-100 (default 20)
     """
     return await _api_get(
-        f"/tm/skills/{skill_id}/candidates",
+        f"/tm/skills/{int(skill_id)}/candidates",
         params={
-            "min_proficiency": min_proficiency,
-            "min_evidence_strength": min_evidence_strength,
-            "limit": limit,
+            "min_proficiency": int(min_proficiency),
+            "min_evidence_strength": int(min_evidence_strength),
+            "limit": int(limit),
         },
     )
 
 
 @mcp.tool()
 async def get_stale_skills(
-    skill_id: int,
-    older_than_days: int = 365,
+    skill_id: float,
+    older_than_days: float = 365,
 ) -> str:
     """Find employees whose skill record hasn't been validated or updated recently —
     useful for governance and freshness checks.
@@ -219,16 +219,16 @@ async def get_stale_skills(
         older_than_days: Skills not updated in this many days (default 365)
     """
     return await _api_get(
-        f"/tm/skills/{skill_id}/stale",
-        params={"older_than_days": older_than_days},
+        f"/tm/skills/{int(skill_id)}/stale",
+        params={"older_than_days": int(older_than_days)},
     )
 
 
 @mcp.tool()
 async def get_cooccurring_skills(
-    skill_id: int,
-    min_proficiency: int = 3,
-    top: int = 20,
+    skill_id: float,
+    min_proficiency: float = 3,
+    top: float = 20,
 ) -> str:
     """Discover which skills commonly co-occur with a given skill — "people who know X
     also tend to know Y". Useful for recommendations and skill adjacency analysis.
@@ -239,8 +239,8 @@ async def get_cooccurring_skills(
         top: Number of co-occurring skills to return 1-50 (default 20)
     """
     return await _api_get(
-        f"/tm/skills/{skill_id}/cooccurring",
-        params={"min_proficiency": min_proficiency, "top": top},
+        f"/tm/skills/{int(skill_id)}/cooccurring",
+        params={"min_proficiency": int(min_proficiency), "top": int(top)},
     )
 
 
@@ -250,7 +250,7 @@ async def get_cooccurring_skills(
 @mcp.tool()
 async def search_talent(
     skills: str,
-    min_proficiency: int = 3,
+    min_proficiency: float = 3,
 ) -> str:
     """Find employees who have ALL specified skills at a minimum proficiency — an AND search.
     Returns matching employees with per-skill detail.
@@ -261,7 +261,7 @@ async def search_talent(
     """
     return await _api_get(
         "/tm/talent/search",
-        params={"skills": skills, "min_proficiency": min_proficiency},
+        params={"skills": skills, "min_proficiency": int(min_proficiency)},
     )
 
 
@@ -271,7 +271,7 @@ async def search_talent(
 @mcp.tool()
 async def get_org_skill_summary(
     org_unit_id: str,
-    limit: int = 20,
+    limit: float = 20,
 ) -> str:
     """Get the top skills in an org unit (including all child orgs in the hierarchy) —
     aggregate counts and top experts per skill.
@@ -282,16 +282,16 @@ async def get_org_skill_summary(
     """
     return await _api_get(
         f"/tm/orgs/{org_unit_id}/skills/summary",
-        params={"limit": limit},
+        params={"limit": int(limit)},
     )
 
 
 @mcp.tool()
 async def get_org_skill_experts(
     org_unit_id: str,
-    skill_id: int,
-    min_proficiency: int = 3,
-    limit: int = 20,
+    skill_id: float,
+    min_proficiency: float = 3,
+    limit: float = 20,
 ) -> str:
     """Find employees within an org unit who have a specific skill — scoped to the
     org hierarchy (includes child orgs).
@@ -303,8 +303,8 @@ async def get_org_skill_experts(
         limit: Max results 1-100 (default 20)
     """
     return await _api_get(
-        f"/tm/orgs/{org_unit_id}/skills/{skill_id}/experts",
-        params={"min_proficiency": min_proficiency, "limit": limit},
+        f"/tm/orgs/{org_unit_id}/skills/{int(skill_id)}/experts",
+        params={"min_proficiency": int(min_proficiency), "limit": int(limit)},
     )
 
 

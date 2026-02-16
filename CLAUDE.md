@@ -140,7 +140,7 @@ Each tool wraps a GET endpoint. The tool name matches the business question it a
 ### ID Formats (validated by the API)
 - Employee IDs: `EMP` followed by 6 digits (e.g., `EMP000001`)
 - Org IDs: `ORG` followed by 1-4 digits and optional letter (e.g., `ORG030`, `ORG031B`)
-- Skill IDs: integers (e.g., `1`, `42`, `93`)
+- Skill IDs: numeric — integers or floats accepted (e.g., `1`, `42`, `1.0`)
 - Skill categories: `technical`, `functional`, `leadership`, `domain`, `tool`, `other`
 
 ### Key Conventions
@@ -148,3 +148,4 @@ Each tool wraps a GET endpoint. The tool name matches the business question it a
 - The API returns JSON with Pydantic-validated response shapes
 - 8 of 12 endpoints expose employee PII — the API key protects access
 - The skill catalog has 93 skills across 5 categories
+- All numeric tool parameters accept floats (e.g. `1.0`) for Joule Studio compatibility — the MCP server converts to `int` before calling the API
