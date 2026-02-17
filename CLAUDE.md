@@ -16,24 +16,29 @@ Joule Agent / AI Assistant ↔ MCP Server (Streamable HTTP) ↔ HTTP ↔ TM Skil
 - No need to duplicate query logic or manage DB connections
 
 ## Tech Stack
-- **MCP SDK:** `mcp` (Python SDK with FastMCP)
+- **MCP SDK:** `mcp` v1.26+ (Python SDK with FastMCP)
 - **HTTP client:** `httpx` (async)
 - **Configuration:** `pydantic-settings` (reads `.env` or env vars)
 - **Transport:** Streamable HTTP (MCP spec 2025-03-26) — suitable for remote deployment
 - **Audit DB:** `aiosqlite` (async SQLite — WAL mode, local file)
+- **CORS:** Starlette `CORSMiddleware` (for the monitoring dashboard)
 
 ## Git Repo
 
 **Remote:** git@github.com:pradeepj-prj/tm-mcp-server.git
+
+## Related Projects
+
+- **Monitoring Dashboard:** `~/tm_mcp_dashboard/` (git@github.com:pradeepj-prj/mcp-audit-dashboard.git) — React SPA that visualizes audit data from this server's `/audit/*` REST endpoints
 
 ## Project Structure
 ```
 tm_mcp_server/
 ├── CLAUDE.md              ← You are here
 ├── MCP_GUIDE.md           ← Comprehensive guide to MCP for newcomers
-├── server.py              ← MCP server: tools, resources, prompts (Streamable HTTP)
-├── audit.py               ← SQLite-backed audit logger + query methods
-├── config.py              ← Configuration (host, port, API URL, API key, audit DB path)
+├── server.py              ← MCP server: tools, resources, prompts (Streamable HTTP + CORS)
+├── audit.py               ← SQLite-backed audit logger + lazy init + query methods
+├── config.py              ← Configuration (host, port, API URL, API key, CORS, audit DB path)
 ├── pyproject.toml         ← Project metadata and dependencies
 ├── requirements.txt       ← Production deps for CF Python buildpack
 ├── runtime.txt            ← Python version pin for CF
@@ -112,6 +117,24 @@ Plain HTTP endpoints for querying audit data directly (no MCP client needed):
 Query parameters for `/audit/query`: `tool_name`, `session_id`, `client_name`, `since`, `until`, `errors_only` (true/false), `limit`.
 
 **Note:** The audit DB is ephemeral on CF — it resets on each redeploy. Configure `AUDIT_DB_PATH` to point at a volume mount if persistence is needed.
+
+### CORS (for Monitoring Dashboard)
+
+The server includes CORS middleware so the React monitoring dashboard can call `/audit/*` endpoints from the browser. Configured in `config.py`:
+
+```
+CORS_ORIGINS=http://localhost:5173,http://localhost:4173
+```
+
+For production, add the dashboard's deployed URL to `CORS_ORIGINS` env var.
+
+### Entry Point Architecture
+
+The `__main__` block uses `mcp.streamable_http_app()` + `uvicorn.run()` instead of `mcp.run()`. This returns the raw Starlette ASGI app, allowing us to add CORS middleware before starting the server. The MCP endpoint, custom routes, and session manager all work identically.
+
+### Audit Logger Lazy Initialization
+
+The `AuditLogger._ensure_db()` method lazily initializes the SQLite connection on first use. This is necessary because the FastMCP `lifespan` runs per-MCP-session (not at app startup), so REST endpoints like `/audit/summary` would otherwise hit an uninitialized DB before any MCP client connects.
 
 ## MCP Primitives
 

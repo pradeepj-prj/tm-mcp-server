@@ -43,6 +43,11 @@ class AuditLogger:
         await self._db.executescript(_SCHEMA)
         await self._db.commit()
 
+    async def _ensure_db(self) -> None:
+        """Lazily initialize the DB connection on first use."""
+        if self._db is None:
+            await self.initialize()
+
     async def close(self) -> None:
         if self._db:
             await self._db.close()
@@ -67,8 +72,7 @@ class AuditLogger:
     ) -> None:
         """Insert an audit record. Never raises — failures are logged and swallowed."""
         try:
-            if self._db is None:
-                return
+            await self._ensure_db()
             await self._db.execute(
                 """
                 INSERT INTO tool_calls
@@ -99,8 +103,7 @@ class AuditLogger:
 
     async def _fetchall_dicts(self, sql: str, params: tuple = ()) -> list[dict]:
         """Execute a query and return rows as list of dicts."""
-        if self._db is None:
-            return []
+        await self._ensure_db()
         self._db.row_factory = aiosqlite.Row
         cursor = await self._db.execute(sql, params)
         rows = await cursor.fetchall()
@@ -152,8 +155,7 @@ class AuditLogger:
         )
 
     async def get_summary_stats(self) -> dict:
-        if self._db is None:
-            return {}
+        await self._ensure_db()
         self._db.row_factory = aiosqlite.Row
 
         # Overall stats

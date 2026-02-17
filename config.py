@@ -22,5 +22,8 @@ class Settings(BaseSettings):
     # Audit log SQLite database path
     audit_db_path: str = "audit.db"
 
+    # CORS origins (comma-separated) — needed for the monitoring dashboard
+    cors_origins: str = "http://localhost:5173,http://localhost:4173"
+
 
 settings = Settings()

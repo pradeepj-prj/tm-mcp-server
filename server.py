@@ -583,4 +583,14 @@ def org_talent_review(org_unit_id: str) -> str:
 # ===========================================================================
 
 if __name__ == "__main__":
-    mcp.run(transport="streamable-http")
+    import uvicorn
+    from starlette.middleware.cors import CORSMiddleware
+
+    app = mcp.streamable_http_app()
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origins.split(","),
+        allow_methods=["GET", "POST"],
+        allow_headers=["*"],
+    )
+    uvicorn.run(app, host=settings.host, port=settings.port)
