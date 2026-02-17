@@ -20,6 +20,7 @@ Joule Agent / AI Assistant ↔ MCP Server (Streamable HTTP) ↔ HTTP ↔ TM Skil
 - **HTTP client:** `httpx` (async)
 - **Configuration:** `pydantic-settings` (reads `.env` or env vars)
 - **Transport:** Streamable HTTP (MCP spec 2025-03-26) — suitable for remote deployment
+- **Audit DB:** `aiosqlite` (async SQLite — WAL mode, local file)
 
 ## Git Repo
 
@@ -31,7 +32,8 @@ tm_mcp_server/
 ├── CLAUDE.md              ← You are here
 ├── MCP_GUIDE.md           ← Comprehensive guide to MCP for newcomers
 ├── server.py              ← MCP server: tools, resources, prompts (Streamable HTTP)
-├── config.py              ← Configuration (host, port, API URL, API key)
+├── audit.py               ← SQLite-backed audit logger + query methods
+├── config.py              ← Configuration (host, port, API URL, API key, audit DB path)
 ├── pyproject.toml         ← Project metadata and dependencies
 ├── requirements.txt       ← Production deps for CF Python buildpack
 ├── runtime.txt            ← Python version pin for CF
@@ -66,6 +68,7 @@ mcp dev server.py
 
 ### Live URLs
 - **MCP endpoint:** https://tm-skills-mcp.cfapps.ap10.hana.ondemand.com/mcp
+- **Audit REST:** https://tm-skills-mcp.cfapps.ap10.hana.ondemand.com/audit/{recent,query,summary}
 - **CF org/space:** SEAIO_dial-3-0-zme762l7 / dev
 
 ### Deploy
@@ -97,10 +100,23 @@ Add the MCP server URL as a tool in Joule Studio:
 https://tm-skills-mcp.cfapps.ap10.hana.ondemand.com/mcp
 ```
 
+### Audit REST Endpoints
+Plain HTTP endpoints for querying audit data directly (no MCP client needed):
+
+| Endpoint | Description | Example |
+|----------|-------------|---------|
+| `GET /audit/recent?limit=N` | Last N tool calls (default 50) | `curl https://tm-skills-mcp.cfapps.ap10.hana.ondemand.com/audit/recent?limit=20` |
+| `GET /audit/query?...` | Filtered query | `curl "…/audit/query?tool_name=browse_skills&since=2026-02-01"` |
+| `GET /audit/summary` | Aggregate stats | `curl https://tm-skills-mcp.cfapps.ap10.hana.ondemand.com/audit/summary` |
+
+Query parameters for `/audit/query`: `tool_name`, `session_id`, `client_name`, `since`, `until`, `errors_only` (true/false), `limit`.
+
+**Note:** The audit DB is ephemeral on CF — it resets on each redeploy. Configure `AUDIT_DB_PATH` to point at a volume mount if persistence is needed.
+
 ## MCP Primitives
 
-### Tools (13 — one per API endpoint)
-Each tool wraps a GET endpoint. The tool name matches the business question it answers.
+### Tools (16 — 13 TM API + 3 audit)
+Each TM tool wraps a GET endpoint. The tool name matches the business question it answers. All 13 TM tools are wrapped with `@audited` which records invocations to the local SQLite audit DB.
 
 | Tool | Wraps Endpoint | Description |
 |------|---------------|-------------|
@@ -117,6 +133,11 @@ Each tool wraps a GET endpoint. The tool name matches the business question it a
 | `browse_skills` | `GET /tm/skills` | Skill catalog with filters |
 | `get_org_skill_summary` | `GET /tm/orgs/{id}/skills/summary` | Org-level skill summary |
 | `get_org_skill_experts` | `GET /tm/orgs/{id}/skills/{sid}/experts` | Skill experts within an org |
+| `audit_get_recent_calls` | Local SQLite | Last N tool invocations with full details |
+| `audit_query_calls` | Local SQLite | Filtered query by tool, session, client, time range, errors |
+| `audit_get_summary` | Local SQLite | Aggregate stats: totals, per-tool averages, error rate |
+
+The 3 audit tools are **not** wrapped with `@audited` to avoid meta-query noise.
 
 ### Resources (2 — static context for the LLM)
 | URI | Content |
