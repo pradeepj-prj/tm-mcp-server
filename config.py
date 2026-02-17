@@ -19,5 +19,8 @@ class Settings(BaseSettings):
     # Request timeout (seconds)
     tm_api_timeout: float = 30.0
 
+    # Audit log SQLite database path
+    audit_db_path: str = "audit.db"
+
 
 settings = Settings()

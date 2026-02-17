@@ -1,11 +1,33 @@
 """TM Skills MCP Server — exposes the Talent Management API as MCP tools, resources, and prompts."""
 
+import json
+import time
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from functools import wraps
 from pathlib import Path
 
 import httpx
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import Context, FastMCP
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 
+from audit import AuditLogger
 from config import settings
+
+# ---------------------------------------------------------------------------
+# Audit logger — module-level so MCP tools and REST endpoints share it
+# ---------------------------------------------------------------------------
+
+audit_logger = AuditLogger(settings.audit_db_path)
+
+
+@asynccontextmanager
+async def audit_lifespan(app: FastMCP) -> AsyncIterator[dict]:
+    await audit_logger.initialize()
+    yield {}
+    await audit_logger.close()
+
 
 # ---------------------------------------------------------------------------
 # Server setup
@@ -23,9 +45,87 @@ mcp = FastMCP(
     ),
     host=settings.host,
     port=settings.port,
+    lifespan=audit_lifespan,
 )
 
 RESOURCES_DIR = Path(__file__).parent / "resources"
+
+
+# ---------------------------------------------------------------------------
+# @audited decorator — wraps tool functions with audit logging
+# ---------------------------------------------------------------------------
+
+
+def audited(fn):
+    """Decorator that logs tool invocations to the audit database.
+
+    Extracts session/client metadata from the MCP Context, measures duration,
+    and records success/failure. Never lets audit errors propagate to callers.
+    """
+
+    @wraps(fn)
+    async def wrapper(*args, **kwargs):
+        start = time.perf_counter()
+        success = True
+        error_msg = None
+
+        # Extract context metadata (graceful degradation if unavailable)
+        request_id = None
+        session_id = None
+        client_name = None
+        client_version = None
+        try:
+            ctx: Context | None = kwargs.get("ctx")
+            if ctx:
+                # Session ID from the MCP session
+                try:
+                    session_id = ctx.session.client_params.meta.sessionId
+                except Exception:
+                    pass
+                # Client info from MCP handshake
+                try:
+                    client_info = ctx.session.client_params.clientInfo
+                    client_name = client_info.name
+                    client_version = client_info.version
+                except Exception:
+                    pass
+                # Request ID from the current JSON-RPC message
+                try:
+                    request_id = str(ctx.request_id)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        # Build parameter dict (exclude ctx)
+        params = {k: v for k, v in kwargs.items() if k != "ctx"}
+
+        try:
+            result = await fn(*args, **kwargs)
+            return result
+        except Exception as exc:
+            success = False
+            error_msg = str(exc)
+            raise
+        finally:
+            duration_ms = (time.perf_counter() - start) * 1000
+            try:
+                await audit_logger.log_tool_call(
+                    tool_name=fn.__name__,
+                    parameters=params or None,
+                    success=success,
+                    error_msg=error_msg,
+                    duration_ms=duration_ms,
+                    request_id=request_id,
+                    session_id=session_id,
+                    client_name=client_name,
+                    client_version=client_version,
+                )
+            except Exception:
+                pass  # never let audit errors propagate
+
+    return wrapper
+
 
 # ---------------------------------------------------------------------------
 # HTTP client helper
@@ -72,7 +172,8 @@ def get_business_questions() -> str:
 
 
 @mcp.tool()
-async def get_employee_skills(employee_id: str) -> str:
+@audited
+async def get_employee_skills(employee_id: str, ctx: Context = None) -> str:
     """Get the full skill profile for an employee — all skills with proficiency (0-5),
     confidence (0-100), source, and last updated date.
 
@@ -83,7 +184,8 @@ async def get_employee_skills(employee_id: str) -> str:
 
 
 @mcp.tool()
-async def get_skill_evidence(employee_id: str, skill_id: float) -> str:
+@audited
+async def get_skill_evidence(employee_id: str, skill_id: float, ctx: Context = None) -> str:
     """Get the evidence behind an employee's skill rating — certifications, projects,
     assessments, peer endorsements, etc.
 
@@ -95,7 +197,8 @@ async def get_skill_evidence(employee_id: str, skill_id: float) -> str:
 
 
 @mcp.tool()
-async def get_top_skills(employee_id: str, limit: float = 10) -> str:
+@audited
+async def get_top_skills(employee_id: str, limit: float = 10, ctx: Context = None) -> str:
     """Get an employee's strongest skills ranked by proficiency and confidence —
     a "skill passport" view.
 
@@ -110,7 +213,8 @@ async def get_top_skills(employee_id: str, limit: float = 10) -> str:
 
 
 @mcp.tool()
-async def get_evidence_inventory(employee_id: str) -> str:
+@audited
+async def get_evidence_inventory(employee_id: str, ctx: Context = None) -> str:
     """Get ALL evidence items across ALL skills for an employee — the complete
     evidence inventory (certifications, projects, endorsements).
 
@@ -124,9 +228,11 @@ async def get_evidence_inventory(employee_id: str) -> str:
 
 
 @mcp.tool()
+@audited
 async def browse_skills(
     category: str | None = None,
     search: str | None = None,
+    ctx: Context = None,
 ) -> str:
     """Browse the skill catalog — list all skills or filter by category/search term.
     Use this to find skill IDs before calling other tools.
@@ -144,10 +250,12 @@ async def browse_skills(
 
 
 @mcp.tool()
+@audited
 async def get_top_experts(
     skill_id: float,
     min_proficiency: float = 4,
     limit: float = 20,
+    ctx: Context = None,
 ) -> str:
     """Find the top experts for a specific skill — ranked by proficiency, confidence, and recency.
 
@@ -163,9 +271,11 @@ async def get_top_experts(
 
 
 @mcp.tool()
+@audited
 async def get_skill_coverage(
     skill_id: float,
     min_proficiency: float = 3,
+    ctx: Context = None,
 ) -> str:
     """Get the proficiency distribution for a skill — how many employees at each level (0-5)
     and total count above a threshold.
@@ -181,11 +291,13 @@ async def get_skill_coverage(
 
 
 @mcp.tool()
+@audited
 async def get_evidence_backed_candidates(
     skill_id: float,
     min_proficiency: float = 3,
     min_evidence_strength: float = 4,
     limit: float = 20,
+    ctx: Context = None,
 ) -> str:
     """Find employees with a skill AND strong evidence to back it up — certifications,
     project work, assessments with high signal strength.
@@ -207,9 +319,11 @@ async def get_evidence_backed_candidates(
 
 
 @mcp.tool()
+@audited
 async def get_stale_skills(
     skill_id: float,
     older_than_days: float = 365,
+    ctx: Context = None,
 ) -> str:
     """Find employees whose skill record hasn't been validated or updated recently —
     useful for governance and freshness checks.
@@ -225,10 +339,12 @@ async def get_stale_skills(
 
 
 @mcp.tool()
+@audited
 async def get_cooccurring_skills(
     skill_id: float,
     min_proficiency: float = 3,
     top: float = 20,
+    ctx: Context = None,
 ) -> str:
     """Discover which skills commonly co-occur with a given skill — "people who know X
     also tend to know Y". Useful for recommendations and skill adjacency analysis.
@@ -248,9 +364,11 @@ async def get_cooccurring_skills(
 
 
 @mcp.tool()
+@audited
 async def search_talent(
     skills: str,
     min_proficiency: float = 3,
+    ctx: Context = None,
 ) -> str:
     """Find employees who have ALL specified skills at a minimum proficiency — an AND search.
     Returns matching employees with per-skill detail.
@@ -269,9 +387,11 @@ async def search_talent(
 
 
 @mcp.tool()
+@audited
 async def get_org_skill_summary(
     org_unit_id: str,
     limit: float = 20,
+    ctx: Context = None,
 ) -> str:
     """Get the top skills in an org unit (including all child orgs in the hierarchy) —
     aggregate counts and top experts per skill.
@@ -287,11 +407,13 @@ async def get_org_skill_summary(
 
 
 @mcp.tool()
+@audited
 async def get_org_skill_experts(
     org_unit_id: str,
     skill_id: float,
     min_proficiency: float = 3,
     limit: float = 20,
+    ctx: Context = None,
 ) -> str:
     """Find employees within an org unit who have a specific skill — scoped to the
     org hierarchy (includes child orgs).
@@ -306,6 +428,96 @@ async def get_org_skill_experts(
         f"/tm/orgs/{org_unit_id}/skills/{int(skill_id)}/experts",
         params={"min_proficiency": int(min_proficiency), "limit": int(limit)},
     )
+
+
+# ===========================================================================
+# AUDIT TOOLS — MCP tools for querying audit data (NOT audited themselves)
+# ===========================================================================
+
+
+@mcp.tool()
+async def audit_get_recent_calls(limit: float = 50) -> str:
+    """Get the most recent MCP tool invocations from the audit log.
+
+    Args:
+        limit: Number of recent calls to return (1-500, default 50)
+    """
+    rows = await audit_logger.query_recent(limit=int(limit))
+    return json.dumps(rows, indent=2)
+
+
+@mcp.tool()
+async def audit_query_calls(
+    tool_name: str | None = None,
+    session_id: str | None = None,
+    client_name: str | None = None,
+    since: str | None = None,
+    until: str | None = None,
+    errors_only: bool = False,
+    limit: float = 100,
+) -> str:
+    """Query the audit log with filters — find calls by tool, session, client, or time range.
+
+    Args:
+        tool_name: Filter by tool name (e.g. "get_employee_skills")
+        session_id: Filter by MCP session ID
+        client_name: Filter by client name from MCP handshake
+        since: Start of time range (ISO 8601, e.g. "2026-02-01")
+        until: End of time range (ISO 8601, e.g. "2026-02-28")
+        errors_only: If true, only return failed calls
+        limit: Max results to return (1-500, default 100)
+    """
+    rows = await audit_logger.query_with_filters(
+        tool_name=tool_name,
+        session_id=session_id,
+        client_name=client_name,
+        since=since,
+        until=until,
+        errors_only=errors_only,
+        limit=int(limit),
+    )
+    return json.dumps(rows, indent=2)
+
+
+@mcp.tool()
+async def audit_get_summary() -> str:
+    """Get aggregate audit statistics — total calls, unique tools/clients, error rates,
+    and per-tool duration averages.
+    """
+    stats = await audit_logger.get_summary_stats()
+    return json.dumps(stats, indent=2)
+
+
+# ===========================================================================
+# AUDIT REST ENDPOINTS — plain HTTP access for visualization / curl
+# ===========================================================================
+
+
+@mcp.custom_route("/audit/recent", methods=["GET"])
+async def audit_recent_http(request: Request) -> JSONResponse:
+    limit = int(request.query_params.get("limit", "50"))
+    rows = await audit_logger.query_recent(limit=limit)
+    return JSONResponse(rows)
+
+
+@mcp.custom_route("/audit/query", methods=["GET"])
+async def audit_query_http(request: Request) -> JSONResponse:
+    rows = await audit_logger.query_with_filters(
+        tool_name=request.query_params.get("tool_name"),
+        session_id=request.query_params.get("session_id"),
+        client_name=request.query_params.get("client_name"),
+        since=request.query_params.get("since"),
+        until=request.query_params.get("until"),
+        errors_only=request.query_params.get("errors_only", "").lower() == "true",
+        limit=int(request.query_params.get("limit", "100")),
+    )
+    return JSONResponse(rows)
+
+
+@mcp.custom_route("/audit/summary", methods=["GET"])
+async def audit_summary_http(request: Request) -> JSONResponse:
+    stats = await audit_logger.get_summary_stats()
+    return JSONResponse(stats)
 
 
 # ===========================================================================
